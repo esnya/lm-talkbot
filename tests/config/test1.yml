@@ -1,0 +1,8 @@
+database:
+  host: example.com
+  port: 1234
+  user: user1
+  password: pass1
+
+log:
+  version: 1

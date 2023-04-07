@@ -1,0 +1,6 @@
+database:
+  host: example2.com
+  user: user2
+
+extra:
+  key: value

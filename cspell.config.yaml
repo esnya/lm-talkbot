@@ -1,0 +1,25 @@
+version: "0.2"
+ignorePaths: []
+dictionaryDefinitions: []
+dictionaries: []
+words:
+  - abeja
+  - argh
+  - asctime
+  - asyncargh
+  - esnya
+  - levelname
+  - neos
+  - ngram
+  - numpy
+  - openai
+  - pyzmq
+  - RCVTIMEO
+  - talkbot
+  - talkbots
+  - telop
+  - torchaudio
+  - voicevox
+  - websockets
+ignoreWords: []
+import: []
