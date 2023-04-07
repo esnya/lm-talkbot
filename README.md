@@ -1,6 +1,6 @@
 GPT Talkbot
 ----
-GPT Talkbot is a versatile and customizable chatbot powered by GPT-based models, designed to run locally and offer advanced natural language processing capabilities. It can listen to spoken input, generate meaningful responses, and communicate via speech synthesis. GPT Talkbot also supports fine-tuning on custom datasets and WebSocket integration for sending facial expressions and gestures to platforms like NeosVR.
+GPT Talkbot is a locally executable chatbot execution environment using GPT-based models, with the ability to listen to speech with Whisper and speak with VOICEVOX. It can be executed in a local environment using a model fine-tuned with a proprietary dataset. Facial expressions according to the execution state can be sent via WebSocket.
 
 ## Setup
 1. Install required packages using `requirements.txt`:
