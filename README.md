@@ -13,8 +13,17 @@ pip install -r requirements.txt
 pip install black flake8 isort
 ```
 
+3. Install Text To Speech Engine:
+
+Currentry only supporting [VOICEVOX](https://voicevox.hiroshiba.jp/)
+
 ## Run
-`python -m talkbot`
+
+```
+# Start VOICEVOX Engine
+cd path/to/gpt-talkbot
+python -m talkbot
+```
 
 ### Run Console
 `python -m talkbot console`
