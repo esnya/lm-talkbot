@@ -47,22 +47,9 @@ audio_to_message:
       temperature: 0
       no_speech_threshold: 0.5
       condition_on_previous_text: true
-      language: ja
+      # language: en
       # fp16: false
-    blacklist:
-      - ご視聴ありがとうございました
-      - ご視聴ありがとうございました。
-      - 字幕提供者の皆さん、ご協力ください。
-      - 【はじめしゃちょーエンディング】
-      - 【早送り】
-      - " You"
-      - " Thanks for watching!"
-      - by H.
-      - " you"
-      - " Thank you."
-      - " hmm"
-      - " mmm"
-      - " ."
+    blacklist: []
     max_temperature: 0.5
 
 chat_engine:
@@ -71,8 +58,9 @@ chat_engine:
   history:
     max_count: 5
   device: cuda
-  model: abeja/gpt2-large-japanese
-  # tokenizer: abeja/gpt2-large-japanese
+  # model: path/to/your/trained/model
+  model: gpt2
+  # tokenizer: gpt2
   generation_config: # https://huggingface.co/transformers/main_classes/model.html?highlight=generate#transformers.PreTrainedModel.generate
     # max_length: 20 #20
     # min_length: 10 #10
@@ -128,10 +116,10 @@ neos_connector:
   state_timeout: 30
   max_interval: 30
   expressions:
-    default: 無し
+    default: None
 
 train:
-  base_model: abeja/gpt2-large-japanese
+  base_model: gpt2
   csv_file: ./path/to/data.csv
   generate_pairs: true
   eval_ratio: 0
@@ -147,6 +135,6 @@ train:
     save_strategy: epoch
     resume_from_checkpoint: false
   test_inputs:
-    - <s><user>おはよう<ai>
-    - <s><user>こんにちは。はじめまして<ai>
-    - <s><user>自己紹介をしてください<ai>
+    - <s><user>Hello.<ai>
+    - <s><user>Nice too meet you.<ai>
+    - <s><user>Introduce yourself.<ai>
