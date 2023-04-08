@@ -93,8 +93,13 @@ async def audio_to_message(config: Config = Config()) -> None:
     def transcribe(data: np.ndarray) -> str:
         nonlocal _initial_prompt
 
-        model = load_model()
-
+        model = load_model(
+            config.get("audio_to_message.whisper.model", "base"),
+            config.get(
+                "audio_to_message.whisper.device",
+                "cuda" if torch.cuda.is_available() else "cpu",
+            ),
+        )
         logger.info("Transcribing: frames=%d", data.size)
         result = whisper.transcribe(
             model, data, initial_prompt=_initial_prompt, **config.get("audio_to_message.whisper.decode_config", {})

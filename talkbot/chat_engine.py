@@ -8,7 +8,7 @@ import re
 import time
 from datetime import date
 from functools import lru_cache
-from typing import Any, Awaitable
+from typing import Any
 
 import requests
 import torch
@@ -47,14 +47,14 @@ def load_model(model_name: str, tokenizer_name: str, device: str) -> tuple[T5Tok
     return (tokenizer, model)
 
 
-async def chat_engine(config: Config = Config()) -> Awaitable[None]:
+async def chat_engine(config: Config = Config()):
     """Chat Engine component."""
     logger = config.get_logger("ChatEngine")
     logger.info("Initializing")
 
     with get_sockets(
         config,
-        0,
+        1,
     ) as (write_socket, read_socket):
         model_name = config.get("chat_engine.model")
         tokenizer_name = config.get("chat_engine.tokenizer", model_name)
@@ -234,15 +234,16 @@ async def chat_engine(config: Config = Config()) -> Awaitable[None]:
         last_busy_time = 0
         logger.info("Started")
         await send_state(write_socket, "ChatEngine", ComponentState.READY)
-        while True:
-            try:
-                message = await read_socket.recv_json()
-                if is_user_message(message):
-                    message_buffer.append(message)
-                else:
-                    update_busy_time(message, "AudioToMessage", last_busy_time)
-            except zmq.error.Again:
-                pass
+        while not write_socket.closed and not read_socket.closed:
+            while True:
+                try:
+                    message = await read_socket.recv_json()
+                    if is_user_message(message):
+                        message_buffer.append(message)
+                    else:
+                        update_busy_time(message, "AudioToMessage", last_busy_time)
+                except zmq.error.Again:
+                    break
 
             current_time = time.time()
 
