@@ -10,9 +10,11 @@ import pyaudio
 import torch
 import whisper
 import zmq
+from pyannote.audio.pipelines import VoiceActivityDetection
+from pyannote.core.annotation import Annotation
 from whisper.audio import N_SAMPLES, SAMPLE_RATE
 
-from .utilities.audio import get_device_by_name, get_pa, get_volume_range, open_stream
+from .utilities.audio import get_device_by_name, get_pa, open_stream
 from .utilities.config import Config
 from .utilities.constants import ComponentState
 from .utilities.message import UserMessage, is_busy, update_busy_time
@@ -61,6 +63,10 @@ async def audio_to_message(config: Config = Config()) -> None:
             "cuda" if torch.cuda.is_available() else "cpu",
         ),
     )
+
+    logger.info("Loading VAD pipeline")
+    vad_pipeline = VoiceActivityDetection(**config.get("audio_to_message.vad.pipeline", {}))
+    vad_pipeline.instantiate(config.get("audio_to_message.vad.hyper_parameters", {}))
 
     def filter_segment(
         segment: Any,
@@ -158,42 +164,43 @@ async def audio_to_message(config: Config = Config()) -> None:
                 continue
 
             silence_duration = config.get("message_to_message.silence_duration", 1.0)
-            volume = get_volume_range(buffer[-int(silence_duration * SAMPLE_RATE) :])
 
             max_buffer_size: int = config.get("audio_to_message.max_buffer_size", N_SAMPLES)
-            silence_threshold: float = config.get("audio_to_message.silence_threshold", 0.0)
-
-            logger.debug(
-                "Buffered: %d/%d samples, volume: %.3f/%.3f",
-                buffer.size,
-                max_buffer_size,
-                volume,
-                silence_threshold,
-            )
 
             if is_busy(last_busy_time, config.get("global.busy_timeout", 30.0)):
                 await asyncio.sleep(1)
                 continue
 
-            if buffer.size >= max_buffer_size or (
-                volume < silence_threshold and buffer.size >= config.get("audio_to_message.min_buffer_size", 0)
+            vad: Annotation = vad_pipeline(
+                {"waveform": torch.from_numpy(buffer.reshape((1, -1))), "sample_rate": SAMPLE_RATE}
+            )
+            timeline = vad.get_timeline(False)
+            segments: list[tuple[(int, int)]] = [
+                (max(int((seg.start - 0.5) * SAMPLE_RATE), 0), int(math.ceil((seg.end + 0.5) * SAMPLE_RATE)))
+                for seg in timeline  # type: ignore
+            ]
+
+            if len(segments) == 0:
+                continue
+
+            left = segments[0][0]
+            right = segments[-2][1] if len(segments) >= 2 else segments[-1][1]
+            if (
+                len(segments) >= 2
+                or right - left >= max_buffer_size
+                or buffer.size - right >= silence_duration * SAMPLE_RATE
             ):
-                total_volume = get_volume_range(buffer)
-                if total_volume > config.get("audio_to_message.min_volume", 0.0):
-                    logger.info("Buffered %d samples, volume: %.3f/%.3f", buffer.size, volume, total_volume)
-                    await send_state(write_socket, "AudioToMessage", ComponentState.BUSY)
-                    text = await asyncio.to_thread(
-                        transcribe,
-                        buffer,
-                    )
-                    if text:
-                        await write_socket.send_json(
-                            UserMessage(
-                                role="user",
-                                content=text,
-                            )
+                await send_state(write_socket, "AudioToMessage", ComponentState.BUSY)
+                text = await asyncio.to_thread(transcribe, buffer[left:right])
+                buffer = buffer[right:]
+                if text:
+                    await write_socket.send_json(
+                        UserMessage(
+                            role="user",
+                            content=text,
                         )
-                    await send_state(write_socket, "AudioToMessage", ComponentState.READY)
-                    await asyncio.sleep(1)
-                buffer = np.empty((0,), np.float32)
+                    )
+                await send_state(write_socket, "AudioToMessage", ComponentState.READY)
+            elif left > 0:
+                buffer = buffer[left:]
     logger.info("Terminated")
