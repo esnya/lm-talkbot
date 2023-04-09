@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import math
 import os
 import random
 import re
@@ -43,6 +44,7 @@ def load_model(model_name: str, tokenizer_name: str, device: str) -> tuple[T5Tok
     tokenizer.do_lower_case = True  # type: ignore
 
     model: AutoModelForCausalLM = AutoModelForCausalLM.from_pretrained(model_name).to(device)  # type: ignore
+    model.eval()
 
     return (tokenizer, model)
 
@@ -143,7 +145,15 @@ async def chat_engine(config: Config = Config()):
                 "chat_engine.generation_config",
                 dict[str, Any](),
             )
-            output_ids = model.generate(input_ids, **generation_config)  # type: ignore
+            output_ids = model.generate(  # type: ignore
+                input_ids,
+                **generation_config,
+            )
+            loss = model(output_ids, labels=output_ids).loss.item()  # type: ignore
+            logger.info("Loss: %s", loss)
+            if math.isnan(loss) or loss > config.get("chat_engine.max_loss", 10):
+                return None
+
             output_token_count = len(output_ids[0]) - len(input_ids[0])
             logger.debug("Decoding %s tokens: %s", output_token_count, tokenizer.batch_decode(output_ids))
             output_text = tokenizer.decode(output_ids[0][len(input_ids[0]) :])
@@ -258,7 +268,6 @@ async def chat_engine(config: Config = Config()):
 
                 assistant_message = await _process_messages(message_buffer)
                 if not assistant_message:
-                    await asyncio.sleep(1)
                     continue
 
                 message_buffer = []

@@ -107,6 +107,7 @@ chat_engine:
     - <ai>
   message_separator: ""
   stop_pattern: </?s>|<user>|<ai>
+  max_loss: 8
 
 message_to_speak:
   talk_pattern: (.*)
