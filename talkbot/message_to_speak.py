@@ -3,8 +3,9 @@
 import asyncio
 import os
 import re
-from io import BytesIO
-from wave import Wave_read
+
+import pyaudio
+from pyaudio import Stream
 
 from talkbot.utilities.message import is_assistant_message
 
@@ -39,29 +40,18 @@ async def message_to_speak(config: Config = Config()) -> None:
 
     logger.info("Initialized")
 
-    def _play(data: bytes):
-        device_name = config.get("message_to_speak.output_device.name")
-        output_device_index = 0
-        if device_name is not None:
-            output_device_index = get_device_by_name(device_name, min_output_channels=1)
-        with Wave_read(BytesIO(data)) as wav, open_stream(
-            output_device_index=output_device_index,
-            format=get_pa().get_format_from_width(wav.getsampwidth()),
-            channels=wav.getnchannels(),
-            rate=wav.getframerate(),
-            output=True,
-        ) as stream:
-            logger.debug(
-                "Playing on: %s",
-                get_pa().get_device_info_by_index(output_device_index),
-            )
-            stream.write(data[44:])
-            stream.stop_stream()
+    async def play(data: bytes, stream: Stream):
+        await asyncio.to_thread(stream.write, data[44:])
 
-    async def play(data: bytes):
-        await asyncio.to_thread(_play, data)
-
-    with get_sockets(config) as (write_socket, read_socket):
+    device_name = config.get("message_to_speak.output_device.name")
+    output_device_index = 0 if device_name is None else get_device_by_name(device_name, min_output_channels=1)
+    logger.debug(
+        "Playing on: %s",
+        get_pa().get_device_info_by_index(output_device_index),
+    )
+    with get_sockets(config) as (write_socket, read_socket), open_stream(
+        output_device_index=output_device_index, format=pyaudio.paInt16, channels=1, rate=24000, output=True
+    ) as stream:
         logger.info("Started")
         await send_state(write_socket, "MessageToSpeak", ComponentState.READY)
 
@@ -104,7 +94,7 @@ async def message_to_speak(config: Config = Config()) -> None:
             data = await synthesis(query, speaker)
 
             await send_state(write_socket, "MessageToSpeak", ComponentState.BUSY)
-            await play(data)
+            await play(data, stream)
             await send_state(write_socket, "MessageToSpeak", ComponentState.READY)
 
         logger.info("Terminated")
