@@ -163,6 +163,10 @@ async def chat_engine(config: Config = Config()):
             logger.debug(end_match)
             content = output_text[: end_match.start()] if end_match else output_text
 
+            max_length = config.get("chat_engine.content_max_length")
+            if max_length and len(content) > max_length:
+                return None
+
             return content
 
         async def _process_command(message: AssistantMessage) -> str | None:
