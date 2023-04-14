@@ -85,7 +85,7 @@ async def train(config: Config = Config()) -> None:
     class Callback(TrainerCallback):
         """Callback to test the model after each epoch."""
 
-        def on_save(self, *args, **kwargs):
+        def on_epoch_end(self, *args, **kwargs):
             """Test the model after each epoch."""
 
             for text in config.get("train.test_inputs", []):
