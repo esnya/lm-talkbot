@@ -47,7 +47,7 @@ async def bridge(config1: Config = Config(), config2: Config = Config(), sleep: 
             except zmq.error.Again:
                 pass
 
-        for msg in messages:
+        for msg in messages or [{"role": "user", "content": " "}]:
             await write.send_json(msg)
 
     with get_sockets(config1, sleep) as (write_socket1, read_socket1), get_sockets(config2, sleep) as (
