@@ -267,10 +267,10 @@ async def chat_engine(config: Config = Config()):
                 prev_time = current_time
 
                 assistant_message = await _process_messages(message_buffer)
+                message_buffer = []
+
                 if not assistant_message:
                     continue
-
-                message_buffer = []
 
                 command_result = await _process_command(assistant_message)
                 if command_result:
