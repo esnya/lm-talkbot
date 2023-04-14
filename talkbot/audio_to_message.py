@@ -96,8 +96,11 @@ async def audio_to_message(config: Config = Config()) -> None:
 
     _initial_prompt: str | None = None
 
-    def transcribe(data: np.ndarray) -> str:
+    def transcribe(data: np.ndarray) -> list[str] | None:
         nonlocal _initial_prompt
+
+        if np.max(data) - np.min(data) <= config.get("audio_to_message.min_volume", 0.01):
+            return None
 
         model = load_model(
             config.get("audio_to_message.whisper.model", "base"),
@@ -111,9 +114,9 @@ async def audio_to_message(config: Config = Config()) -> None:
             model, data, initial_prompt=_initial_prompt, **config.get("audio_to_message.whisper.decode_config", {})
         )
 
-        text = "".join([segment.get("text") for segment in result["segments"] if filter_segment(segment)])
-        if text:
-            _initial_prompt = (_initial_prompt or "") + text
+        segments = [segment.get("text") for segment in result["segments"] if filter_segment(segment)]
+        if segments:
+            _initial_prompt = (_initial_prompt or "") + " ".join(segments)
 
         prompt_length: int = config.get("audio_to_message.whisper.prompt_length") or 0
         if prompt_length is None or prompt_length == 0:
@@ -121,7 +124,7 @@ async def audio_to_message(config: Config = Config()) -> None:
         else:
             _initial_prompt = ((_initial_prompt or "") + "\n")[-prompt_length:]
 
-        return text
+        return segments
 
     buffer = np.empty((0,), np.float32)
 
@@ -160,7 +163,7 @@ async def audio_to_message(config: Config = Config()) -> None:
             except zmq.error.Again:
                 pass
 
-            if buffer.size == 0:
+            if buffer.size <= 1:
                 continue
 
             silence_duration = config.get("message_to_message.silence_duration", 1.0)
@@ -171,36 +174,43 @@ async def audio_to_message(config: Config = Config()) -> None:
                 await asyncio.sleep(1)
                 continue
 
-            vad: Annotation = vad_pipeline(
-                {"waveform": torch.from_numpy(buffer.reshape((1, -1))), "sample_rate": SAMPLE_RATE}
-            )
-            timeline = vad.get_timeline(False)
-            segments: list[tuple[(int, int)]] = [
-                (max(int((seg.start - 0.5) * SAMPLE_RATE), 0), int(math.ceil((seg.end + 0.5) * SAMPLE_RATE)))
-                for seg in timeline  # type: ignore
-            ]
+            try:
+                vad: Annotation = vad_pipeline(
+                    {"waveform": torch.from_numpy(buffer.reshape((1, -1))), "sample_rate": SAMPLE_RATE}
+                )
+                timeline = vad.get_timeline(False)
+                segments: list[tuple[(int, int)]] = [
+                    (max(int((seg.start - 0.5) * SAMPLE_RATE), 0), int(math.ceil((seg.end + 0.5) * SAMPLE_RATE)))
+                    for seg in timeline  # type: ignore
+                ]
 
-            if len(segments) == 0:
+                if len(segments) == 0:
+                    continue
+
+                left = segments[0][0]
+                right = segments[-2][1] if len(segments) >= 2 else segments[-1][1]
+                if (
+                    len(segments) >= 2
+                    or right - left >= max_buffer_size
+                    or buffer.size - right >= silence_duration * SAMPLE_RATE
+                ):
+                    await send_state(write_socket, "AudioToMessage", ComponentState.BUSY)
+                    results = await asyncio.to_thread(transcribe, buffer[left:right])
+                    buffer = buffer[right:]
+                    if results:
+                        for text in results:
+                            await write_socket.send_json(
+                                UserMessage(
+                                    role="user",
+                                    content=text,
+                                )
+                            )
+                    await send_state(write_socket, "AudioToMessage", ComponentState.READY)
+                elif left > 0:
+                    buffer = buffer[left:]
+            except (RuntimeError, ValueError) as err:
+                logger.error("%s: %s", type(err), err, exc_info=True)
+                buffer = np.empty((0,), np.float32)
                 continue
 
-            left = segments[0][0]
-            right = segments[-2][1] if len(segments) >= 2 else segments[-1][1]
-            if (
-                len(segments) >= 2
-                or right - left >= max_buffer_size
-                or buffer.size - right >= silence_duration * SAMPLE_RATE
-            ):
-                await send_state(write_socket, "AudioToMessage", ComponentState.BUSY)
-                text = await asyncio.to_thread(transcribe, buffer[left:right])
-                buffer = buffer[right:]
-                if text:
-                    await write_socket.send_json(
-                        UserMessage(
-                            role="user",
-                            content=text,
-                        )
-                    )
-                await send_state(write_socket, "AudioToMessage", ComponentState.READY)
-            elif left > 0:
-                buffer = buffer[left:]
     logger.info("Terminated")
