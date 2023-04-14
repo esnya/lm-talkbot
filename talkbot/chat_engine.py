@@ -245,7 +245,8 @@ async def chat_engine(config: Config = Config()):
 
         prev_time = time.time()
         message_buffer: list[TextMessage] = []
-        last_busy_time = 0
+        last_stt_busy_time = 0
+        last_tts_busy_time = 0
         logger.info("Started")
         await send_state(write_socket, "ChatEngine", ComponentState.READY)
         while not write_socket.closed and not read_socket.closed:
@@ -255,7 +256,8 @@ async def chat_engine(config: Config = Config()):
                     if is_user_message(message):
                         message_buffer.append(message)
                     else:
-                        update_busy_time(message, "AudioToMessage", last_busy_time)
+                        last_stt_busy_time = update_busy_time(message, "AudioToMessage", last_stt_busy_time)
+                        last_tts_busy_time = update_busy_time(message, "MessageToSpeak", last_tts_busy_time)
                 except zmq.error.Again:
                     break
 
@@ -264,7 +266,8 @@ async def chat_engine(config: Config = Config()):
             if (
                 message_buffer
                 and current_time - prev_time >= config.get("chat_engine.min_interval", 30)
-                and time.time() - last_busy_time > config.get("global.busy_timeout", 30)
+                and time.time() - last_stt_busy_time > config.get("global.busy_timeout", 30)
+                and time.time() - last_tts_busy_time > config.get("global.busy_timeout", 30)
             ):
                 await send_state(write_socket, "ChatEngine", ComponentState.BUSY)
 
