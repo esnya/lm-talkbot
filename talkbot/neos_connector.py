@@ -3,6 +3,7 @@
 import time
 
 import zmq
+from websockets.exceptions import ConnectionClosedError
 from websockets.server import WebSocketServerProtocol, serve
 
 from talkbot.utilities.message import is_state_message
@@ -31,7 +32,11 @@ async def neos_connector(config: Config = Config()):
     async def _ws_broadcast(message: str):
         logger.info("Expression: %s", message)
         for connection in ws_connections:
-            await connection.send(message)
+            try:
+                await connection.send(message)
+            except ConnectionClosedError as e:
+                logger.error(e)
+                ws_connections.remove(connection)
 
     component_status: dict[str, ComponentState] = {}
     component_status_update_time: dict[str, float] = {}
