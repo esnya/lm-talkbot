@@ -16,15 +16,12 @@ from .train import train
 from .utilities.asyncargh import AsyncArghParser
 from .utilities.config import Config
 
-MINIMUM_COMPONENTS: list[Callable[..., Coroutine[Any, Any, Any]]] = [
+COMPONENTS: list[Callable[..., Coroutine[Any, Any, Any]]] = [
+    neos_connector,
+    audio_to_message,
     message_to_speak,
     chat_engine,
     message_stream,
-]
-
-COMPONENTS: list[Callable[..., Coroutine[Any, Any, Any]]] = MINIMUM_COMPONENTS + [
-    neos_connector,
-    audio_to_message,
 ]
 
 
@@ -39,13 +36,16 @@ async def run(config: Config = Config()):
 
 
 async def run_bridge(
-    config1: Config = Config(), config2: Config = Config(), sleep: float = 10.0, no_whisper: bool = False
+    config1: Config = Config(),
+    config2: Config = Config(),
+    sleep: float = 10.0,
+    no_whisper: bool = False,
 ):
     """Run a bridge between two talkbots."""
     tasks = [
-        *[(component(config=config2)) for component in MINIMUM_COMPONENTS],
-        *[(component(config=config1)) for component in COMPONENTS if not no_whisper or component != audio_to_message],
         bridge(config1=config1, config2=config2, sleep=sleep),
+        *[(component(config=config1)) for component in COMPONENTS if not no_whisper or component != audio_to_message],
+        *[(component(config=config2)) for component in COMPONENTS if component != audio_to_message],
     ]
 
     await asyncio.gather(*[asyncio.create_task(task) for task in tasks])
