@@ -5,7 +5,6 @@ import os
 import re
 
 import pyaudio
-from pyaudio import Stream
 
 from talkbot.utilities.message import is_assistant_message
 
@@ -40,9 +39,6 @@ async def message_to_speak(config: Config = Config()) -> None:
 
     logger.info("Initialized")
 
-    async def play(data: bytes, stream: Stream):
-        await asyncio.to_thread(stream.write, data[44:])
-
     device_name = config.get("message_to_speak.output_device.name")
     output_device_index = 0 if device_name is None else get_device_by_name(device_name, min_output_channels=1)
     logger.debug(
@@ -52,6 +48,12 @@ async def message_to_speak(config: Config = Config()) -> None:
     with get_sockets(config) as (write_socket, read_socket), open_stream(
         output_device_index=output_device_index, format=pyaudio.paInt16, channels=1, rate=24000, output=True
     ) as stream:
+
+        async def play(data: bytes):
+            await send_state(write_socket, "MessageToSpeak", ComponentState.BUSY)
+            await asyncio.to_thread(stream.write, data[44:])
+            await send_state(write_socket, "MessageToSpeak", ComponentState.READY)
+
         logger.info("Started")
         await send_state(write_socket, "MessageToSpeak", ComponentState.READY)
 
@@ -86,15 +88,26 @@ async def message_to_speak(config: Config = Config()) -> None:
                 continue
 
             speaker = config.get("message_to_speak.voicevox.speaker", 1)
-            logger.info("Query: %s", text)
+            segments = re.split(config.get("message_to_speak.split_pattern", r"。"), text)
 
-            query = await audio_query(text, speaker)
-            logger.info("Synthesis: %d", speaker)
+            prev_task: asyncio.Task | None = None
+            for segment in segments:
+                if not segment:
+                    continue
 
-            data = await synthesis(query, speaker)
+                logger.info("Query: %s", segment)
 
-            await send_state(write_socket, "MessageToSpeak", ComponentState.BUSY)
-            await play(data, stream)
-            await send_state(write_socket, "MessageToSpeak", ComponentState.READY)
+                query = await audio_query(segment, speaker)
+                logger.info("Synthesis: %d", speaker)
+
+                data = await synthesis(query, speaker)
+
+                if prev_task:
+                    await prev_task
+
+                prev_task = asyncio.create_task(play(data))
+
+            if prev_task:
+                await prev_task
 
         logger.info("Terminated")

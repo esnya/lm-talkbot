@@ -118,6 +118,7 @@ message_to_speak:
   output_device:
     # name: Device Name
   english_kana_dict: ./data/bep-eng/bep-eng.csv
+  split_pattern: (?<=\.[^0-9])|(?<=[。!?！？])
 
 neos_connector:
   websocket:
