@@ -4,7 +4,7 @@
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/github": "^8.0.7",
-    "semantic-release": "^18.0.0",
+    "semantic-release": "^21.0.1",
     "semantic-release-gitmoji": "^1.6.4"
   },
   "private": true
