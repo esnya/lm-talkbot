@@ -35,7 +35,9 @@ def is_valid_message(message) -> bool:
 
 
 @lru_cache(maxsize=1)
-def load_model(model_name: str, tokenizer_name: str, device: str) -> tuple[T5Tokenizer, AutoModelForCausalLM]:
+def load_model(
+    model_name: str, tokenizer_name: str, device: str, fp16: bool
+) -> tuple[T5Tokenizer, AutoModelForCausalLM]:
     """Load model."""
     tokenizer: T5Tokenizer = T5Tokenizer.from_pretrained(  # type: ignore
         tokenizer_name or model_name,
@@ -44,7 +46,12 @@ def load_model(model_name: str, tokenizer_name: str, device: str) -> tuple[T5Tok
     tokenizer.do_lower_case = True  # type: ignore
 
     model: AutoModelForCausalLM = AutoModelForCausalLM.from_pretrained(model_name).to(device)  # type: ignore
+    if fp16:
+        model = model.half()
     model.eval()
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     return (tokenizer, model)
 
@@ -62,7 +69,7 @@ async def chat_engine(config: Config = Config()):
         tokenizer_name = config.get("chat_engine.tokenizer", model_name)
         device = config.get("chat_engine.device", "cuda" if torch.cuda.is_available() else "cpu")
         logger.info("Loading model: %s (%s)", model_name, device)
-        load_model(model_name, tokenizer_name, device)
+        load_model(model_name, tokenizer_name, device, config.get("chat_engine.fp16", False))
 
         def _get_history_filename() -> str:
             """Get the history filename."""
@@ -128,7 +135,7 @@ async def chat_engine(config: Config = Config()):
                 "cuda" if torch.cuda.is_available() else "cpu",
             )
             logger.debug("Loading model: %s (%s)", model_name, device)
-            (tokenizer, model) = load_model(model_name, tokenizer_name, device)
+            (tokenizer, model) = load_model(model_name, tokenizer_name, device, config.get("chat_engine.fp16", False))
 
             input_text = config.get("chat_engine.message_separator", "").join(
                 _format_messages(history + received_message) + config.get("chat_engine.suffix_messages", [])
@@ -286,5 +293,8 @@ async def chat_engine(config: Config = Config()):
                 await send_state(write_socket, "ChatEngine", ComponentState.READY)
 
                 await asyncio.sleep(config.get("chat_engine.sleep_after_completion", 0))
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             else:
                 await asyncio.sleep(1)

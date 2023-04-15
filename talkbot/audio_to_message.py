@@ -206,6 +206,9 @@ async def audio_to_message(config: Config = Config()) -> None:
                                 )
                             )
                     await send_state(write_socket, "AudioToMessage", ComponentState.READY)
+
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
                 elif left > 0:
                     buffer = buffer[left:]
             except (RuntimeError, ValueError) as err:
