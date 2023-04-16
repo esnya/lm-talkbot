@@ -1,8 +1,8 @@
 from setuptools import setup
 
-__version__ = "0.1.0"
+import talkbot
 
 setup(
     name="talkbot",
-    version=__version__,
+    version=talkbot.__version__,
 )

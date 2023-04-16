@@ -21,5 +21,6 @@ words:
   - torchaudio
   - voicevox
   - websockets
+  - pyannote
 ignoreWords: []
 import: []

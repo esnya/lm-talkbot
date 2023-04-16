@@ -2,3 +2,4 @@ plugins:
   - "semantic-release-gitmoji"
   - "@semantic-release/github"
   - "@semantic-release/changelog"
+  - "./update_version.js"

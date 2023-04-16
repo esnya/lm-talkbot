@@ -2,13 +2,14 @@
 
 import asyncio
 import json
+import math
 import os
 import random
 import re
 import time
 from datetime import date
 from functools import lru_cache
-from typing import Any, Awaitable
+from typing import Any
 
 import requests
 import torch
@@ -34,7 +35,9 @@ def is_valid_message(message) -> bool:
 
 
 @lru_cache(maxsize=1)
-def load_model(model_name: str, tokenizer_name: str, device: str) -> tuple[T5Tokenizer, AutoModelForCausalLM]:
+def load_model(
+    model_name: str, tokenizer_name: str, device: str, fp16: bool
+) -> tuple[T5Tokenizer, AutoModelForCausalLM]:
     """Load model."""
     tokenizer: T5Tokenizer = T5Tokenizer.from_pretrained(  # type: ignore
         tokenizer_name or model_name,
@@ -43,24 +46,30 @@ def load_model(model_name: str, tokenizer_name: str, device: str) -> tuple[T5Tok
     tokenizer.do_lower_case = True  # type: ignore
 
     model: AutoModelForCausalLM = AutoModelForCausalLM.from_pretrained(model_name).to(device)  # type: ignore
+    if fp16:
+        model = model.half()
+    model.eval()
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     return (tokenizer, model)
 
 
-async def chat_engine(config: Config = Config()) -> Awaitable[None]:
+async def chat_engine(config: Config = Config()):
     """Chat Engine component."""
     logger = config.get_logger("ChatEngine")
     logger.info("Initializing")
 
     with get_sockets(
         config,
-        0,
+        1,
     ) as (write_socket, read_socket):
         model_name = config.get("chat_engine.model")
         tokenizer_name = config.get("chat_engine.tokenizer", model_name)
         device = config.get("chat_engine.device", "cuda" if torch.cuda.is_available() else "cpu")
         logger.info("Loading model: %s (%s)", model_name, device)
-        load_model(model_name, tokenizer_name, device)
+        load_model(model_name, tokenizer_name, device, config.get("chat_engine.fp16", False))
 
         def _get_history_filename() -> str:
             """Get the history filename."""
@@ -126,7 +135,7 @@ async def chat_engine(config: Config = Config()) -> Awaitable[None]:
                 "cuda" if torch.cuda.is_available() else "cpu",
             )
             logger.debug("Loading model: %s (%s)", model_name, device)
-            (tokenizer, model) = load_model(model_name, tokenizer_name, device)
+            (tokenizer, model) = load_model(model_name, tokenizer_name, device, config.get("chat_engine.fp16", False))
 
             input_text = config.get("chat_engine.message_separator", "").join(
                 _format_messages(history + received_message) + config.get("chat_engine.suffix_messages", [])
@@ -143,7 +152,15 @@ async def chat_engine(config: Config = Config()) -> Awaitable[None]:
                 "chat_engine.generation_config",
                 dict[str, Any](),
             )
-            output_ids = model.generate(input_ids, **generation_config)  # type: ignore
+            output_ids = model.generate(  # type: ignore
+                input_ids,
+                **generation_config,
+            )
+            loss = model(output_ids, labels=output_ids).loss.item()  # type: ignore
+            logger.info("Loss: %s", loss)
+            if math.isnan(loss) or loss > config.get("chat_engine.max_loss", 10):
+                return None
+
             output_token_count = len(output_ids[0]) - len(input_ids[0])
             logger.debug("Decoding %s tokens: %s", output_token_count, tokenizer.batch_decode(output_ids))
             output_text = tokenizer.decode(output_ids[0][len(input_ids[0]) :])
@@ -152,6 +169,10 @@ async def chat_engine(config: Config = Config()) -> Awaitable[None]:
             end_match = re.search(config.get("chat_engine.stop_pattern", "</s>"), output_text)
             logger.debug(end_match)
             content = output_text[: end_match.start()] if end_match else output_text
+
+            max_length = config.get("chat_engine.content_max_length")
+            if max_length and len(content) > max_length:
+                return None
 
             return content
 
@@ -231,36 +252,39 @@ async def chat_engine(config: Config = Config()) -> Awaitable[None]:
 
         prev_time = time.time()
         message_buffer: list[TextMessage] = []
-        last_busy_time = 0
+        last_stt_busy_time = 0
+        last_tts_busy_time = 0
         logger.info("Started")
         await send_state(write_socket, "ChatEngine", ComponentState.READY)
-        while True:
-            try:
-                message = await read_socket.recv_json()
-                if is_user_message(message):
-                    message_buffer.append(message)
-                else:
-                    update_busy_time(message, "AudioToMessage", last_busy_time)
-            except zmq.error.Again:
-                pass
+        while not write_socket.closed and not read_socket.closed:
+            while True:
+                try:
+                    message = await read_socket.recv_json()
+                    if is_user_message(message):
+                        message_buffer.append(message)
+                    else:
+                        last_stt_busy_time = update_busy_time(message, "AudioToMessage", last_stt_busy_time)
+                        last_tts_busy_time = update_busy_time(message, "MessageToSpeak", last_tts_busy_time)
+                except zmq.error.Again:
+                    break
 
             current_time = time.time()
 
             if (
                 message_buffer
                 and current_time - prev_time >= config.get("chat_engine.min_interval", 30)
-                and time.time() - last_busy_time > config.get("global.busy_timeout", 30)
+                and time.time() - last_stt_busy_time > config.get("global.busy_timeout", 30)
+                and time.time() - last_tts_busy_time > config.get("global.busy_timeout", 30)
             ):
                 await send_state(write_socket, "ChatEngine", ComponentState.BUSY)
 
                 prev_time = current_time
 
                 assistant_message = await _process_messages(message_buffer)
-                if not assistant_message:
-                    await asyncio.sleep(1)
-                    continue
-
                 message_buffer = []
+
+                if not assistant_message:
+                    continue
 
                 command_result = await _process_command(assistant_message)
                 if command_result:
@@ -269,5 +293,8 @@ async def chat_engine(config: Config = Config()) -> Awaitable[None]:
                 await send_state(write_socket, "ChatEngine", ComponentState.READY)
 
                 await asyncio.sleep(config.get("chat_engine.sleep_after_completion", 0))
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             else:
                 await asyncio.sleep(1)

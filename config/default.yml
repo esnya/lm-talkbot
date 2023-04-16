@@ -51,6 +51,15 @@ audio_to_message:
       # fp16: false
     blacklist: []
     max_temperature: 0.5
+  vad:
+    pipeline:
+      segmentation: pyannote/segmentation
+      device: cpu
+    hyper_parameters:
+      onset: 0.5
+      offset: 0.5
+      min_duration_on: 0.0
+      min_duration_off: 0.0
 
 chat_engine:
   min_interval: 15
@@ -67,7 +76,7 @@ chat_engine:
     do_sample: true #false
     # early_stopping: true #false
     # num_beams: 2 #1
-    temperature: 1.1 #1.0
+    # temperature: 1.0
     # top_k: 100 #50
     # top_p: 0.95 #1.0
     # length_penalty: 0.1 #1.0
@@ -96,8 +105,9 @@ chat_engine:
     assistant: <ai>{}
   suffix_messages:
     - <ai>
-  message_separator: ""
+  message_separator: "</s><s>"
   stop_pattern: </?s>|<user>|<ai>
+  max_loss: 8
 
 message_to_speak:
   talk_pattern: (.*)
@@ -108,6 +118,7 @@ message_to_speak:
   output_device:
     # name: Device Name
   english_kana_dict: ./data/bep-eng/bep-eng.csv
+  split_pattern: (?<=\.[^0-9])|(?<=[。!?！？])
 
 neos_connector:
   websocket:
@@ -135,6 +146,6 @@ train:
     save_strategy: epoch
     resume_from_checkpoint: false
   test_inputs:
-    - <s><user>Hello.<ai>
-    - <s><user>Nice too meet you.<ai>
-    - <s><user>Introduce yourself.<ai>
+    - <s><user>Hello.</s><s><ai>
+    - <s><user>Nice too meet you.</s><s><ai>
+    - <s><user>Introduce yourself.</s><s><ai>
