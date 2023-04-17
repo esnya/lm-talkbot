@@ -84,7 +84,6 @@ chat_engine:
     # encoder_no_repeat_ngram_size: 0 #0
     bad_words_ids:
       - [0] # <unk>
-      # - [2] # <s>
     # max_time: 30 #null
     # attention_mask: [[long tensor]]
     # use_cache: true #true
@@ -112,13 +111,21 @@ chat_engine:
 message_to_speak:
   talk_pattern: (.*)
   remove_pattern: <req>( [A-Z]+)*|<res>|<extra_id_-[0-9]>( [A-Z]+)*
-  voicevox:
-    base_url: http://localhost:50021
-    speaker: 0
   output_device:
     # name: Device Name
   english_kana_dict: ./data/bep-eng/bep-eng.csv
   split_pattern: (?<=\.[^0-9])|(?<=[。!?！？])
+  engine: voicevox
+  voicevox:
+    base_url: http://localhost:50021
+    speaker: 0
+  rvc:
+    hubert: ./models/rvc/hubert_base.pt
+    model: ./path/to/model.pth
+    is_half: true
+    quality: 1
+    f0_up_key: 0
+    f0_method: pm
 
 neos_connector:
   websocket:

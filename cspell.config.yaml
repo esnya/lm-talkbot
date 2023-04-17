@@ -13,6 +13,7 @@ words:
   - ngram
   - numpy
   - openai
+  - pyannote
   - pyzmq
   - RCVTIMEO
   - talkbot
@@ -21,6 +22,5 @@ words:
   - torchaudio
   - voicevox
   - websockets
-  - pyannote
 ignoreWords: []
 import: []

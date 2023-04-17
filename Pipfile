@@ -24,6 +24,9 @@ websockets = "==10.4"
 torch = {version = "2.0.0", index = "downloadpytorch"}
 torchaudio = {version = "2.0.1", index = "downloadpytorch"}
 "pyannote.audio" = "==2.1.1"
+numpy = "==1.23.5"
+resampy = "*"
+rvc-eval = {git = "https://github.com/esnya/rvc-eval.git"}
 
 [dev-packages]
 bandit = "*"

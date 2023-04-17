@@ -1,0 +1,3 @@
+[submodule "rvc"]
+	path = rvc
+	url = https://github.com/liujing04/Retrieval-based-Voice-Conversion-WebUI.git
