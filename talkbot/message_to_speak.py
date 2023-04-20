@@ -204,6 +204,9 @@ class MessageToRVC(MessageToVoicevox):
     async def play(self, data: bytes):
         import resampy
 
+        if len(data) == 0:
+            return
+
         resampled = resampy.resample(np.frombuffer(data, np.int16), 24000, 16000, axis=0)
         rvc_output = await asyncio.to_thread(
             self.vc.pipeline,

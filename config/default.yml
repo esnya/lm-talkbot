@@ -22,7 +22,7 @@ log:
       format: "%(asctime)s %(levelname)s [%(name)s] %(message)s"
 
 global:
-  busy_timeout: 30
+  busy_timeout: 60
 
 message_stream:
   write: tcp://127.0.0.1:5650
