@@ -166,26 +166,30 @@ class MessageToVoicevox(MessageToSpeak):
 
 class MessageToRVC(MessageToVoicevox):
     def __init__(self, config: Config = Config()):
-        import sys
-
-        import torch
-        from rvc_eval.model import load_hubert, load_net_g
-
-        sys.path.append(os.path.join(os.path.dirname(__file__), "../rvc"))
+        from hf_rvc import RVCFeatureExtractor, RVCModel
 
         super().__init__(config)
-        super().__init__(config)
-
-        device = self.device = torch.device(
-            self.config.get("message_to_speak.rvc.device", "cuda" if torch.cuda.is_available() else "cpu")
-        )
-        self.is_half = self.config.get("message_to_speak.rvc.is_half", True)
-
-        self.logger.info("Loading hubert model")
-        self.hubert = load_hubert(config.get("message_to_speak.rvc.hubert", True), self.is_half, device)
 
         self.logger.info("Loading RVC model")
-        self.net_g, self.sample_rate = load_net_g(config.get("message_to_speak.rvc.model", True), self.is_half, device)
+
+        device = "cpu"
+
+        rvc_model_path = config.get("message_to_speak.rvc.model", True)
+        rvc_model = RVCModel.from_pretrained(rvc_model_path)
+        assert isinstance(rvc_model, RVCModel)
+        if self.config.get("message_to_speak.rvc.fp16", device != "cpu"):
+            rvc_model = rvc_model.half()
+            self.fp16 = True
+        else:
+            self.fp16 = False
+
+        rvc_model = rvc_model.to(device)
+        rvc_model.vits = rvc_model.vits.to(device)
+        self.rvc_model = rvc_model
+
+        feature_extractor = RVCFeatureExtractor.from_pretrained(rvc_model_path)
+        assert isinstance(feature_extractor, RVCFeatureExtractor)
+        self.rvc_feature_extractor = feature_extractor
 
     def _stream_format(self):
         return {
@@ -195,32 +199,37 @@ class MessageToRVC(MessageToVoicevox):
         }
 
     async def play_text(self, text: str):
-        from rvc_eval.vc_infer_pipeline import VC
+        import torch
 
-        quality = self.config.get("message_to_speak.rvc.quality", 1)
-        self.vc = VC(self.sample_rate, self.device, self.is_half, (3 if self.is_half else 1) * quality)
         await super().play_text(text)
+        torch.cuda.empty_cache()
 
     async def play(self, data: bytes):
         import resampy
+        import torch
 
         if len(data) == 0:
             return
+        with torch.no_grad():
+            resampled = resampy.resample(np.frombuffer(data, np.int16), 24000, 16000, axis=0)
+            self.rvc_feature_extractor.set_f0_method(self.config.get("message_to_speak.rvc.f0_method", "pm"))
+            features = self.rvc_feature_extractor(
+                resampled,
+                f0_up_key=int(self.config.get("message_to_speak.rvc.f0_up_key", 0)),
+                sampling_rate=16000,
+                return_tensors="pt",
+            )
+            dtype = torch.float16 if self.fp16 else torch.float32
+            rvc_output = await asyncio.to_thread(
+                self.rvc_model,
+                input_values=features.input_values.to(self.rvc_model.device, dtype=dtype),
+                f0=features.f0.to(self.rvc_model.device, dtype=dtype),
+                f0_coarse=features.f0_coarse.to(self.rvc_model.device),
+            )
 
-        resampled = resampy.resample(np.frombuffer(data, np.int16), 24000, 16000, axis=0)
-        rvc_output = await asyncio.to_thread(
-            self.vc.pipeline,
-            self.hubert,
-            self.net_g,
-            0,
-            resampled,
-            int(self.config.get("message_to_speak.rvc.f0_up_key", 0)),
-            self.config.get("message_to_speak.rvc.f0_method", "pm"),
-        )
-
-        await super().play(
-            (rvc_output.cpu().float().numpy() * self.config.get("message_to_speak.rvc.volume", 1.0)).tobytes()
-        )
+            await super().play(
+                (rvc_output.cpu().float().numpy() * self.config.get("message_to_speak.rvc.volume", 1.0)).tobytes()
+            )
 
 
 def get_class_by_name(name: str) -> type[MessageToSpeak]:
