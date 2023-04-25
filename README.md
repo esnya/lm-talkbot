@@ -1,6 +1,6 @@
-GPT Talkbot
+LM Talkbot
 ----
-GPT Talkbot is a locally executable chatbot execution environment using GPT-based models, with the ability to listen to speech with Whisper and speak with VOICEVOX. It can be executed in a local environment using a model fine-tuned with a proprietary dataset. Facial expressions according to the execution state can be sent via WebSocket.
+LM Talkbot is a locally executable chatbot powered by GPT-based language models (LM), with the ability to listen to speech with Whisper and speak with VOICEVOX. It can be executed in a local environment using a model fine-tuned with a proprietary dataset. Facial expressions according to the execution state can be sent via WebSocket.
 
 ## Setup
 1. Install required packages using `requirements.txt`:
@@ -41,7 +41,7 @@ Serves as a simple and transparent event bus, enabling pub-sub communication bet
 
 `python -m talkbot audio-to-message`
 
-This component converts audio input from the microphone into text messages using the OpenAI Whisper ASR model. It processes the audio data in real-time, transcribes it, and sends the transcribed text as a message to the message-stream component. The transcription process involves filtering out unwanted segments based on a set of configurable parameters.
+This component converts audio input from the microphone into text messages using the Whisper ASR model. It processes the audio data in real-time, transcribes it, and sends the transcribed text as a message to the message-stream component. The transcription process involves filtering out unwanted segments based on a set of configurable parameters.
 
 ### Chat Engine
 
