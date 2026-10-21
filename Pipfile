@@ -27,6 +27,7 @@ torchaudio = {version = "2.0.1", index = "downloadpytorch"}
 numpy = "==1.23.5"
 resampy = "*"
 hf-rvc = "*"
+certifi = ">=2026.10.19"
 
 [dev-packages]
 bandit = "*"
