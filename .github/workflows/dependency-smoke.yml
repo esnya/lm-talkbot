@@ -26,7 +26,8 @@ jobs:
       - name: Export exact public wheel subset
         run: python tools/smoke_requirements.py > "$RUNNER_TEMP/smoke-requirements.txt"
       - name: Install hashed CPU dependencies
-        run: python -m pip install --index-url https://pypi.org/simple --only-binary=:all: --require-hashes -r "$RUNNER_TEMP/smoke-requirements.txt"
+        run: |
+          python -m pip install --index-url https://pypi.org/simple --only-binary=:all: --require-hashes -r "$RUNNER_TEMP/smoke-requirements.txt"
       - run: python -m pip check
       - name: Run CPU compatibility tests
         env:
