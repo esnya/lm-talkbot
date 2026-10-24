@@ -1,0 +1,33 @@
+name: Dependency CPU smoke tests
+
+on:
+  pull_request:
+  push:
+    branches: ["codex/python-security-20261024"]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      HF_HUB_OFFLINE: "1"
+      HF_HOME: ${{ runner.temp }}/huggingface
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_DATASETS_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      GRADIO_ANALYTICS_ENABLED: "False"
+      MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Export exact public wheel subset
+        run: python tools/smoke_requirements.py > "$RUNNER_TEMP/smoke-requirements.txt"
+      - name: Install hashed CPU dependencies
+        run: python -m pip install --index-url https://pypi.org/simple --only-binary=:all: --require-hashes -r "$RUNNER_TEMP/smoke-requirements.txt"
+      - run: python -m pip check
+      - run: python -m unittest tests.test_dependency_compatibility -v

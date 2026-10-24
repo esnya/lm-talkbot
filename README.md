@@ -3,9 +3,16 @@ LM Talkbot
 LM Talkbot is a locally executable chatbot powered by GPT-based language models (LM), with the ability to listen to speech with Whisper and speak with VOICEVOX. It can be executed in a local environment using a model fine-tuned with a proprietary dataset. Facial expressions according to the execution state can be sent via WebSocket.
 
 ## Setup
-1. Install required packages using `requirements.txt`:
+1. Dependencies are recorded in `Pipfile` and `Pipfile.lock`. The legacy speech
+stack has unresolved installation constraints; read [dependency status](DEPENDENCY_STATUS.md)
+before recreating an environment. There is no `requirements.txt` in this repository.
+
+The CPU compatibility subset can be checked independently, without models or
+audio devices:
 ```sh
-pip install -r requirements.txt
+python tools/smoke_requirements.py > smoke-requirements.txt
+python -m pip install --index-url https://pypi.org/simple --only-binary=:all: --require-hashes -r smoke-requirements.txt
+python -m unittest tests.test_dependency_compatibility -v
 ```
 
 2. Install code formatter (Black) and linters (Flake8, isort):
